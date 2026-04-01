@@ -171,10 +171,12 @@ class PlaceModeDetectionSystem:
         if frame is None:
             return None
         try:
+            # แปลงเป็น grayscale ก่อน threshold (รองรับทั้ง Mono8 และ BGR)
+            gray = frame if len(frame.shape) == 2 else cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             _, thresh = cv2.threshold(
-                frame, self.config.threshold_value, 255, cv2.THRESH_BINARY_INV)
+                gray, self.config.threshold_value, 255, cv2.THRESH_BINARY_INV)
             k = np.ones((3, 3), np.uint8)
-            return frame, cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, k)
+            return gray, cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, k)
         except Exception as e:
             logger.error(f"preprocess: {e}")
             return None
@@ -254,8 +256,13 @@ class PlaceModeDetectionSystem:
         if slot_num not in self.slot_roi:
             return False
         x, y, w, h = self.slot_roi[slot_num]
-        exp = self.config.expand_roi
-        roi = thresh[y:y+h, max(0, x-exp):x+w+exp]
+        exp        = self.config.expand_roi
+        img_h, img_w = thresh.shape[:2]
+        x0 = max(0, x - exp)
+        x1 = min(img_w, x + w + exp)
+        y0 = max(0, y)
+        y1 = min(img_h, y + h)
+        roi = thresh[y0:y1, x0:x1]
         try:
             cnts, _ = cv2.findContours(
                 roi, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -492,14 +499,17 @@ class UIManager:
     def _create_status_boxes(self, parent):
         BOX_W, BOX_H, SP = 16, 220, 3
         SLOTS_PER_ROW    = 20
+        SLOT_START       = [1, 21, 41]   # slot แรกของแต่ละแถว (Row0, Row1, Row2)
         center = tk.Frame(parent, bg='#1e1e1e')
         center.pack(expand=True)
-        for row in range(2, -1, -1):
+        # แสดง Row2 (41-60) บนสุด → Row1 (21-40) → Row0 (1-20) ล่างสุด
+        # ให้ตรงกับตำแหน่งถาดจริงที่มองจากกล้อง
+        for row_idx in range(2, -1, -1):
             row_frame = tk.Frame(center, bg='#1e1e1e')
             row_frame.pack(pady=SP)
-            start = (row + 1) * SLOTS_PER_ROW
+            start = SLOT_START[row_idx]
             for col in range(SLOTS_PER_ROW):
-                slot_num = start - col
+                slot_num = start + col   # Left-to-Right
                 bf = tk.Frame(row_frame, bg='#404040',
                               width=BOX_W, height=BOX_H,
                               relief=tk.RAISED, bd=1)
