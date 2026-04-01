@@ -1,0 +1,51 @@
+{
+  "slots": {
+    "boxes": [
+      {
+        "name": "Row 0",
+        "x": 265,
+        "y": 2970,
+        "w": 2105,
+        "h": 30,
+        "slots": 20
+      },
+      {
+        "name": "Row 1",
+        "x": 265,
+        "y": 1780,
+        "w": 2105,
+        "h": 30,
+        "slots": 20
+      },
+      {
+        "name": "Row 2",
+        "x": 1230,
+        "y": 1260,
+        "w": 1130,
+        "h": 30,
+        "slots": 11
+      },
+      {
+        "name": "NG row",
+        "x": 265,
+        "y": 1260,
+        "w": 900,
+        "h": 30,
+        "slots": 9
+      }
+    ],
+    "slots_per_row": [20, 20, 11, 9],
+    "slot_right": [1, 21, 41, 52],
+    "slot_left": [20, 40, 51, 60],
+    "total_slots": 60
+  },
+  "DetectionConfig": {
+    "required_confirmations": 5,
+    "delay_frames": 15,
+    "wrong_pick_cooldown": 120,
+    "min_object_area": 50,
+    "max_object_area": 120,
+    "expand_roi": 15,
+    "threshold_value": 145
+  }
+}
