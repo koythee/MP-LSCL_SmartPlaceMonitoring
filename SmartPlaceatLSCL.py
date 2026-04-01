@@ -439,8 +439,8 @@ class UIManager:
         self.system_status_label:        Optional[tk.Label]        = None
         self.placed_label:               Optional[tk.Label]        = None   # PLACED count
         self.progress_bar:               Optional[ttk.Progressbar] = None
-        self.nr_start_label:             Optional[tk.Label]        = None
-        self.nr_stop_label:              Optional[tk.Label]        = None
+        self.start_label:             Optional[tk.Label]        = None
+        self.stop_label:              Optional[tk.Label]        = None
         self.duration_label:             Optional[tk.Label]        = None
         self.current_index_status_label: Optional[tk.Label]        = None
         self.start_btn:                  Optional[tk.Button]       = None
@@ -576,8 +576,8 @@ class UIManager:
         tk.Label(f, text="⏱️ TIME WORKING",
                  font=('Arial', 11, 'bold'), fg='#FFD700', bg='#2e2e2e').pack(pady=5)
         for text, attr, color in [
-            ("NR Start:", 'nr_start_label', '#4CAF50'),
-            ("NR Stop:",  'nr_stop_label',  '#FF5722'),
+            ("Start:", 'start_label', '#4CAF50'),
+            ("Stop:",  'stop_label',  '#FF5722'),
             ("Duration:", 'duration_label', '#2196F3'),
         ]:
             row = tk.Frame(f, bg='#2e2e2e')
@@ -726,8 +726,8 @@ class UIManager:
         self.traveler_entry.focus()
 
     def reset_time_display(self):
-        self.nr_start_label.config(text="--:--:--")
-        self.nr_stop_label.config(text="--:--:--")
+        self.start_label.config(text="--:--:--")
+        self.stop_label.config(text="--:--:--")
         self.duration_label.config(text="00:00:00")
         self.current_index_status_label.config(
             text="PLACED : 0  |  NEXT SLOT : -")
@@ -792,7 +792,8 @@ class DataManager:
         ts   = datetime.now().strftime("%Y%m%d_%H%M%S")
         data = {"timestamp": ts, "form_data": form_data,
                 "time_data": time_data, "detection_data": detection_data}
-        ok1  = self.save_mysql(data)
+        # ok1  = self.save_mysql(data)
+        ok1 = True
         ok2  = False
         try:
             with open(f"{self.log_folder}/inspection_{ts}.json",
@@ -1038,7 +1039,7 @@ class DetectionApp:
             text="Status: Running ▶️", fg='#2196F3')
 
         start_str = self.time_tracker.start()
-        self.ui_manager.nr_start_label.config(text=start_str)
+        self.ui_manager.start_label.config(text=start_str)
         self._tick_timer()
         logger.info("Detection started")
 
@@ -1063,7 +1064,7 @@ class DetectionApp:
             return
         self.is_running = False
         stop_str = self.time_tracker.stop()
-        self.ui_manager.nr_stop_label.config(text=stop_str)
+        self.ui_manager.stop_label.config(text=stop_str)
         if self.update_timer_id:
             self.root.after_cancel(self.update_timer_id)
             self.update_timer_id = None
