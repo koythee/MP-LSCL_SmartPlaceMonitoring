@@ -81,13 +81,15 @@ class SlotConfiguration:
     def __init__(self):
         with open('config.json', 'r', encoding='utf-8') as f:
             slot_cfg = json.load(f)['slots']
+        # โหลดเฉพาะ 3 rows (ไม่มี NG row)
         self.boxes = [
             ROIBox(x=b.get('x', 0), y=b.get('y', 0),
                    w=b.get('w', 0), h=b.get('h', 0),
                    slots=b.get('slots', 0))
-            for b in slot_cfg.get('boxes', [])
+            for b in slot_cfg.get('boxes', [])[:3]
         ]
-        self.slot_right = [1, 21, 41]   # 3 rows แรก
+        # slot_start[i] = หมายเลข slot แรกของแถว i (อ่านจาก config)
+        self.slot_start = slot_cfg.get('slot_start', [1, 21, 41])
 
 
 class DatabaseConfig:
@@ -112,12 +114,12 @@ def play_alarm_beep():
 # ==================== PLACE MODE DETECTION ====================
 class PlaceModeDetectionSystem:
     """
-    Place Mode (ไม่มี QTY limit)
+    Place Mode — 3 แถว × 20 slots = 60 slots (Left-to-Right)
     ────────────────────────────────────────────────────────
     • ถาดว่างก่อน Start
-    • วางทีละชิ้นตามลำดับ slot 1 → 2 → ...
-    • ไม่มีจำนวนสูงสุด — กด Stop เมื่อวางครบ แล้วกด Finished
-    • วาง 2 ชิ้นพร้อมกัน → ALARM + หยุดทันที → ต้อง Reset
+    • วางทีละแผ่นตามลำดับ slot 1 → 2 → ... → 60
+    • วางไม่ครบ 60 ก็ได้ — กด Stop เมื่อวางครบ แล้วกด Finished
+    • วาง 2 แผ่นพร้อมกัน → ALARM + หยุดทันที → ต้อง Reset
     • วางผิดลำดับ         → ALARM + หยุดทันที → ต้อง Reset
     ────────────────────────────────────────────────────────
     """
@@ -177,21 +179,21 @@ class PlaceModeDetectionSystem:
             logger.error(f"preprocess: {e}")
             return None
 
-    # ── build full slot grid (ทุก slot ใน 3 rows) ─────────────────────
+    # ── build full slot grid (3 rows × 20 slots = 60) ────────────────
     def _build_full_slot_grid(self):
-        """สร้าง ROI ครบ 60 slots (หรือตาม config) ไว้ล่วงหน้า"""
+        """สร้าง ROI ครบ 60 slots — Left-to-Right ทุกแถว"""
         self.slot_roi.clear()
         self.all_slots.clear()
 
         for row_idx in range(3):
             roi_box    = self.slot_config.boxes[row_idx]
             n_slots    = roi_box.slots
-            slot_start = self.slot_config.slot_right[row_idx]
+            slot_start = self.slot_config.slot_start[row_idx]
             slot_w     = roi_box.w // n_slots
 
             for i in range(n_slots):
                 slot_num = slot_start + i
-                x = roi_box.x + roi_box.w - (i + 1) * slot_w   # Right-to-Left
+                x = roi_box.x + i * slot_w   # Left-to-Right
                 self.slot_roi[slot_num] = (x, roi_box.y, slot_w, roi_box.h)
                 self.all_slots.append(slot_num)
 
