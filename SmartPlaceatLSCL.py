@@ -451,7 +451,7 @@ class UIManager:
         self.opt_id_entry:               Optional[tk.Entry]        = None
 
     def setup_ui(self):
-        main = tk.Frame(self.root, bg='#2b2b2b')
+        main = tk.Frame(self.root, bg='#F0F2F5')
         main.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         main.grid_columnconfigure(0, weight=35, minsize=400)
         main.grid_columnconfigure(1, weight=30, minsize=400)
@@ -462,68 +462,66 @@ class UIManager:
         self._setup_control_panel(main)
 
     def _setup_video_frame(self, parent):
-        f = tk.Frame(parent, bg='#1b1b1b', relief=tk.SUNKEN, bd=2)
+        f = tk.Frame(parent, bg='#FFFFFF', relief=tk.SOLID, bd=1)
         f.grid(row=0, column=0, sticky='nsew', padx=(0, 5))
-        self.video_label = tk.Label(f, bg='#1b1b1b',
+        self.video_label = tk.Label(f, bg='#FFFFFF',
                                     text="Camera Feed Loading...",
-                                    fg='white', font=('Arial', 16))
+                                    fg='#555555', font=('Arial', 16))
         self.video_label.pack(expand=True, fill=tk.BOTH)
 
     def _setup_status_display(self, parent):
-        frame = tk.Frame(parent, bg='#1e1e1e', relief=tk.SUNKEN, bd=2)
+        frame = tk.Frame(parent, bg='#FFFFFF', relief=tk.SOLID, bd=1)
         frame.grid(row=0, column=1, sticky='nsew', padx=5)
         frame.grid_rowconfigure(0, weight=1)
         frame.grid_rowconfigure(1, weight=0)
         frame.grid_columnconfigure(0, weight=1)
 
-        upper = tk.Frame(frame, bg='#1e1e1e')
+        upper = tk.Frame(frame, bg='#FFFFFF')
         upper.grid(row=0, column=0, sticky="nsew")
         tk.Label(upper, text="SLOT STATUS",
-                 font=('Arial', 14, 'bold'), fg='white', bg='#1e1e1e').pack(pady=10)
+                 font=('Arial', 14, 'bold'), fg='#1565C0', bg='#FFFFFF').pack(pady=10)
 
-        canvas = tk.Canvas(upper, bg='#1e1e1e', highlightthickness=0)
+        canvas = tk.Canvas(upper, bg='#FFFFFF', highlightthickness=0)
         canvas.pack(fill="both", expand=True)
-        cf = tk.Frame(canvas, bg='#1e1e1e')
+        cf = tk.Frame(canvas, bg='#FFFFFF')
         cf.bind("<Configure>",
                 lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
         canvas.create_window((0, 0), window=cf, anchor="nw")
         self._create_status_boxes(cf)
 
-        bot = tk.Frame(frame, bg='#1e1e1e', relief=tk.SUNKEN, bd=2)
+        bot = tk.Frame(frame, bg='#E3F2FD', relief=tk.FLAT, bd=0)
         bot.grid(row=1, column=0, sticky='ew', padx=5, pady=5)
         self.current_index_status_label = tk.Label(
             bot, text="PLACED : 0  |  NEXT SLOT : -",
-            font=('Arial', 14, 'bold'), fg="#FFFFFF", bg='#1e1e1e')
+            font=('Arial', 14, 'bold'), fg="#1565C0", bg='#E3F2FD')
         self.current_index_status_label.pack(pady=5)
 
     def _create_status_boxes(self, parent):
         BOX_W, BOX_H, SP = 16, 220, 3
         SLOTS_PER_ROW    = 20
-        SLOT_START       = [1, 21, 41]   # slot แรกของแต่ละแถว (Row0, Row1, Row2)
-        center = tk.Frame(parent, bg='#1e1e1e')
+        SLOT_START       = [1, 21, 41]
+        center = tk.Frame(parent, bg='#FFFFFF')
         center.pack(expand=True)
-        # แสดง Row2 (41-60) บนสุด → Row1 (21-40) → Row0 (1-20) ล่างสุด
-        # ให้ตรงกับตำแหน่งถาดจริงที่มองจากกล้อง
         for row_idx in range(2, -1, -1):
-            row_frame = tk.Frame(center, bg='#1e1e1e')
+            row_frame = tk.Frame(center, bg='#FFFFFF')
             row_frame.pack(pady=SP)
             start = SLOT_START[row_idx]
             for col in range(SLOTS_PER_ROW):
-                slot_num = start + col   # Left-to-Right
-                bf = tk.Frame(row_frame, bg='#404040',
+                slot_num = start + col
+                bf = tk.Frame(row_frame, bg='#CFD8DC',
                               width=BOX_W, height=BOX_H,
                               relief=tk.RAISED, bd=1)
                 bf.pack(side=tk.LEFT, padx=SP)
                 bf.pack_propagate(False)
                 lbl = tk.Label(bf, text=str(slot_num),
                                font=('Arial', 8, 'bold'),
-                               fg='white', bg='#404040')
+                               fg='#37474F', bg='#CFD8DC')
                 lbl.pack(expand=True)
                 self.status_boxes[slot_num] = {
                     'frame': bf, 'label': lbl, 'current_state': None}
 
     def _setup_control_panel(self, parent):
-        ctrl = tk.Frame(parent, bg='#3b3b3b', relief=tk.RAISED, bd=2)
+        ctrl = tk.Frame(parent, bg='#FFFFFF', relief=tk.SOLID, bd=1)
         ctrl.grid(row=0, column=2, sticky='nsew', padx=(5, 0))
         ctrl.grid_columnconfigure(0, weight=1)
         self._setup_form(ctrl)
@@ -531,33 +529,29 @@ class UIManager:
         self._setup_buttons(ctrl)
         self._setup_bottom_status(ctrl)
 
-    # ── form: Lot Number + OPT ID เท่านั้น ───────────────────────────────
     def _setup_form(self, parent):
-        form = tk.Frame(parent, bg='#2e2e2e', relief=tk.SUNKEN, bd=2)
+        form = tk.Frame(parent, bg='#F5F5F5', relief=tk.SOLID, bd=1)
         form.pack(pady=10, padx=10, fill=tk.X)
 
         LF = ('Arial', 10, 'bold')
         EF = ('Arial', 10)
 
         def _row(label_text, key, bind_return=None):
-            f = tk.Frame(form, bg='#2e2e2e')
+            f = tk.Frame(form, bg='#F5F5F5')
             f.pack(fill=tk.X, padx=10, pady=8)
-            tk.Label(f, text=label_text, font=LF, fg='white', bg='#2e2e2e',
+            tk.Label(f, text=label_text, font=LF, fg='#333333', bg='#F5F5F5',
                      width=13, anchor='w').pack(side=tk.LEFT)
-            e = tk.Entry(f, font=EF, bg='#404040', fg='white',
-                         insertbackground='white', relief=tk.FLAT)
+            e = tk.Entry(f, font=EF, bg='#FFFFFF', fg='#111111',
+                         insertbackground='#1565C0', relief=tk.SOLID, bd=1)
             e.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=6)
             if bind_return:
                 e.bind("<Return>", bind_return)
             self.input_entries[key] = e
             return e
 
-        # Lot Number → Enter → jump OPT ID
         self.traveler_entry = _row("Lot Number:", 'traveler_lot',
                                    bind_return=self._on_lot_enter)
         self.traveler_entry.focus()
-
-        # OPT ID → Enter → focus Start
         self.opt_id_entry = _row("OPT ID:", 'opt_id',
                                  bind_return=self._on_opt_id_enter)
 
@@ -571,87 +565,83 @@ class UIManager:
                 self.start_btn.focus()
 
     def _setup_time_section(self, parent):
-        f = tk.Frame(parent, bg='#2e2e2e', relief=tk.SUNKEN, bd=2)
+        f = tk.Frame(parent, bg='#F5F5F5', relief=tk.SOLID, bd=1)
         f.pack(pady=10, padx=10, fill=tk.X)
         tk.Label(f, text="⏱️ TIME WORKING",
-                 font=('Arial', 11, 'bold'), fg='#FFD700', bg='#2e2e2e').pack(pady=5)
+                 font=('Arial', 11, 'bold'), fg='#1565C0', bg='#F5F5F5').pack(pady=5)
         for text, attr, color in [
-            ("Start:", 'start_label', '#4CAF50'),
-            ("Stop:",  'stop_label',  '#FF5722'),
-            ("Duration:", 'duration_label', '#2196F3'),
+            ("Start:",    'start_label',    '#2E7D32'),
+            ("Stop:",     'stop_label',     '#C62828'),
+            ("Duration:", 'duration_label', '#1565C0'),
         ]:
-            row = tk.Frame(f, bg='#2e2e2e')
+            row = tk.Frame(f, bg='#F5F5F5')
             row.pack(fill=tk.X, padx=10, pady=3)
             tk.Label(row, text=text, font=('Arial', 11, 'bold'),
-                     fg='white', bg='#2e2e2e',
+                     fg='#333333', bg='#F5F5F5',
                      width=12, anchor='w').pack(side=tk.LEFT)
             lbl = tk.Label(row,
                            text="--:--:--" if "Duration" not in text else "00:00:00",
                            font=('Arial', 11, 'bold'), fg=color,
-                           bg='#404040', relief=tk.FLAT, anchor='w', padx=5)
+                           bg='#FFFFFF', relief=tk.SOLID, bd=1, anchor='w', padx=5)
             lbl.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=3)
             setattr(self, attr, lbl)
 
     def _setup_buttons(self, parent):
-        bf = tk.Frame(parent, bg='#3b3b3b')
+        bf = tk.Frame(parent, bg='#FFFFFF')
         bf.pack(pady=10, padx=10, fill=tk.X)
 
-        # ▶ Start
         self.start_btn = tk.Button(
             bf, text="▶️  Start",
-            bg='#2196F3', fg='white', font=('Arial', 13, 'bold'),
-            height=2, relief=tk.RAISED, bd=3)
+            bg='#1565C0', fg='white', font=('Arial', 13, 'bold'),
+            height=2, relief=tk.FLAT, bd=0, cursor='hand2')
         self.start_btn.pack(fill=tk.X, pady=2)
 
-        # ⏹ Stop (ใช้งานได้ตอน running)
         self.stop_btn = tk.Button(
             bf, text="⏹  Stop",
-            bg='#F44336', fg='white', font=('Arial', 13, 'bold'),
-            height=2, relief=tk.RAISED, bd=3, state=tk.DISABLED)
+            bg='#E53935', fg='white', font=('Arial', 13, 'bold'),
+            height=2, relief=tk.FLAT, bd=0, cursor='hand2', state=tk.DISABLED)
         self.stop_btn.pack(fill=tk.X, pady=2)
 
-        # ✅ Finished → บันทึก (ใช้งานได้หลัง Stop)
         self.finished_btn = tk.Button(
             bf, text="✅  Finished",
-            bg='#4CAF50', fg='white', font=('Arial', 13, 'bold'),
-            height=2, relief=tk.RAISED, bd=3, state=tk.DISABLED)
+            bg='#2E7D32', fg='white', font=('Arial', 13, 'bold'),
+            height=2, relief=tk.FLAT, bd=0, cursor='hand2', state=tk.DISABLED)
         self.finished_btn.pack(fill=tk.X, pady=2)
 
-        # 🔄 Reset
         self.reset_btn = tk.Button(
             bf, text="🔄  Reset",
-            bg='#FF9800', fg='white', font=('Arial', 13, 'bold'),
-            height=2, relief=tk.RAISED, bd=3)
+            bg='#E65100', fg='white', font=('Arial', 13, 'bold'),
+            height=2, relief=tk.FLAT, bd=0, cursor='hand2')
         self.reset_btn.pack(fill=tk.X, pady=2)
 
     def _setup_bottom_status(self, parent):
-        bf = tk.Frame(parent, bg='#3b3b3b')
+        bf = tk.Frame(parent, bg='#FFFFFF')
         bf.pack(pady=10, padx=10, fill=tk.X, side='bottom')
 
         self.placed_label = tk.Label(
             bf, text="Placed: 0",
-            font=('Arial', 14, 'bold'), fg='#32CD32', bg='#3b3b3b')
+            font=('Arial', 14, 'bold'), fg='#2E7D32', bg='#FFFFFF')
         self.placed_label.pack(pady=4)
 
         self.system_status_label = tk.Label(
             bf, text="Status: Ready",
-            font=('Arial', 11, 'bold'), fg='#4CAF50', bg='#3b3b3b')
+            font=('Arial', 11, 'bold'), fg='#1565C0', bg='#FFFFFF')
         self.system_status_label.pack()
 
-        leg = tk.Frame(bf, bg='#3b3b3b')
+        leg = tk.Frame(bf, bg='#FFFFFF')
         leg.pack(fill=tk.X, pady=5)
-        for text, color in [("■ WAITING", '#007799'),
-                             ("■ PLACED",  '#32CD32'),
-                             ("■ ALARM",   '#CC0000')]:
+        for text, color in [("■ WAITING", '#0277BD'),
+                             ("■ PLACED",  '#2E7D32'),
+                             ("■ ALARM",   '#C62828')]:
             tk.Label(leg, text=text, font=('Arial', 9, 'bold'),
-                     fg=color, bg='#3b3b3b').pack(side=tk.LEFT, padx=5)
+                     fg=color, bg='#FFFFFF').pack(side=tk.LEFT, padx=5)
 
     # ── update methods ────────────────────────────────────────────────────
     def update_status_boxes(self, changed_slots=None):
         if not self.detector.initialized:
             for box in self.status_boxes.values():
-                box['frame'].config(bg='#404040', relief='raised', bd=1)
-                box['label'].config(bg='#404040', fg='white')
+                box['frame'].config(bg='#CFD8DC', relief='raised', bd=1)
+                box['label'].config(bg='#CFD8DC', fg='#37474F')
                 box['current_state'] = None
             return
 
@@ -667,14 +657,14 @@ class UIManager:
                 continue
 
             if state == PlaceState.PLACED:
-                bg, fg, relief = '#32CD32', 'black', 'sunken'
+                bg, fg, relief = '#43A047', 'white', 'sunken'   # เขียวเข้ม
             elif slot_num == self.detector.current_index:
                 if self.detector.alarm_triggered:
-                    bg, fg, relief = '#CC0000', 'white', 'raised'
+                    bg, fg, relief = '#E53935', 'white', 'raised'  # แดง
                 else:
-                    bg, fg, relief = '#007799', 'white', 'raised'
+                    bg, fg, relief = '#0277BD', 'white', 'raised'  # น้ำเงิน (NEXT)
             else:
-                bg, fg, relief = '#555555', 'white', 'raised'
+                bg, fg, relief = '#CFD8DC', '#37474F', 'raised'    # เทาอ่อน
 
             box['frame'].config(bg=bg, relief=relief, bd=1)
             box['label'].config(bg=bg, fg=fg)
@@ -841,7 +831,7 @@ class DetectionApp:
         self.root = root
         self.root.title("Smart Place Monitoring System Ver.1.0")
         self.root.attributes('-fullscreen', True)
-        self.root.configure(bg='#2b2b2b')
+        self.root.configure(bg='#F0F2F5')
 
         self._create_top_bar()
 
@@ -866,17 +856,17 @@ class DetectionApp:
         logger.info("DetectionApp ready")
 
     def _create_top_bar(self):
-        bar = tk.Frame(self.root, bg='#1a1a1a', height=60,
-                       relief=tk.RAISED, bd=1)
+        bar = tk.Frame(self.root, bg='#1565C0', height=60,
+                       relief=tk.FLAT, bd=0)
         bar.pack(side=tk.TOP, fill=tk.X)
         bar.pack_propagate(False)
         tk.Label(bar, text="Smart Place Monitoring System Ver.1.0",
-                 font=('Arial', 16, 'bold'), fg='white', bg='#1a1a1a'
+                 font=('Arial', 16, 'bold'), fg='white', bg='#1565C0'
                  ).pack(side=tk.LEFT, padx=15, pady=8)
         for text, bg, cmd in [
-            ("✕",  '#DC3545', self.on_closing),
-            ("―",  '#FFC107', self.minimize_window),
-            ("📄", '#07A0FF', self.show_report),
+            ("✕",  '#E53935', self.on_closing),
+            ("―",  '#FB8C00', self.minimize_window),
+            ("📄", '#1E88E5', self.show_report),
         ]:
             tk.Button(bar, text=text, font=('Arial', 16, 'bold'), fg='white',
                       bg=bg, bd=0, width=3, cursor='hand2',
@@ -931,7 +921,7 @@ class DetectionApp:
 
         messagebox.showwarning(title, msg, parent=self.root)
         self.ui_manager.system_status_label.config(
-            text="⚠️ ALARM - กรุณา Reset", fg='#FF0000')
+            text="⚠️ ALARM - กรุณา Reset", fg='#C62828')
 
         # disable Start, Stop, Finished
         self.ui_manager.start_btn.config(state=tk.DISABLED)
@@ -944,11 +934,11 @@ class DetectionApp:
         try:
             if self.camera.open(1):
                 self.ui_manager.system_status_label.config(
-                    text="Status: Ready – กรอกข้อมูลแล้วกด Start", fg='#4CAF50')
+                    text="Status: Ready – กรอกข้อมูลแล้วกด Start", fg='#1565C0')
                 threading.Thread(target=self._video_loop, daemon=True).start()
             else:
                 self.ui_manager.system_status_label.config(
-                    text="Status: Camera Error", fg='#F44336')
+                    text="Status: Camera Error", fg='#C62828')
                 play_alarm_beep()
                 messagebox.showerror("❌ กล้องไม่ตอบสนอง",
                                      "ไม่สามารถเชื่อมต่อกล้องได้",
@@ -1032,11 +1022,11 @@ class DetectionApp:
         self._alarm_shown = False
         self.is_running   = True
 
-        self.ui_manager.start_btn.config(state=tk.DISABLED, bg='#555555')
+        self.ui_manager.start_btn.config(state=tk.DISABLED, bg='#90A4AE')
         self.ui_manager.stop_btn.config(state=tk.NORMAL)
         self.ui_manager.finished_btn.config(state=tk.DISABLED)
         self.ui_manager.system_status_label.config(
-            text="Status: Running ▶️", fg='#2196F3')
+            text="Status: Running ▶️", fg='#1565C0')
 
         start_str = self.time_tracker.start()
         self.ui_manager.start_label.config(text=start_str)
@@ -1048,11 +1038,11 @@ class DetectionApp:
         """พนักงานกด Stop — หยุด detection แต่ยังไม่บันทึก"""
         self._stop_internal()
 
-        self.ui_manager.start_btn.config(state=tk.DISABLED, bg='#555555')
+        self.ui_manager.start_btn.config(state=tk.DISABLED, bg='#90A4AE')
         self.ui_manager.stop_btn.config(state=tk.DISABLED)
-        self.ui_manager.finished_btn.config(state=tk.NORMAL)   # ← เปิด Finished
+        self.ui_manager.finished_btn.config(state=tk.NORMAL)
         self.ui_manager.system_status_label.config(
-            text="Status: Stopped – กด ✅ Finished เพื่อบันทึก", fg='#FF9800')
+            text="Status: Stopped – กด ✅ Finished เพื่อบันทึก", fg='#E65100')
 
         placed = self.detector.placed_count
         logger.info(f"Detection stopped by user. Placed={placed}")
@@ -1145,11 +1135,11 @@ class DetectionApp:
             self.ui_manager.update_all_components()
 
             self.ui_manager.start_btn.config(
-                text="▶️  Start", bg='#2196F3', state=tk.NORMAL)
+                text="▶️  Start", bg='#1565C0', state=tk.NORMAL)
             self.ui_manager.stop_btn.config(state=tk.DISABLED)
             self.ui_manager.finished_btn.config(state=tk.DISABLED)
             self.ui_manager.system_status_label.config(
-                text="Status: Ready – กรอกข้อมูลแล้วกด Start", fg='#4CAF50')
+                text="Status: Ready – กรอกข้อมูลแล้วกด Start", fg='#1565C0')
 
             logger.info("System reset")
             if not silent:
@@ -1191,8 +1181,8 @@ class DetectionApp:
 
         win = tk.Toplevel(self.root)
         win.overrideredirect(True)
-        win.configure(bg="#0D47A1")
-        W, H, B = 1400, 760, 3
+        win.configure(bg="#1565C0")
+        W, H, B = 1400, 760, 2
         sw, sh  = win.winfo_screenwidth(), win.winfo_screenheight()
         win.geometry(f"{W}x{H}+{(sw-W)//2}+{(sh-H)//2}")
         win.grab_set()
@@ -1204,20 +1194,20 @@ class DetectionApp:
                          f"+{win.winfo_y()+e.y_root-_d['y']}")
             _d["x"], _d["y"] = e.x_root, e.y_root
 
-        outer = tk.Frame(win, bg="#0D47A1")
+        outer = tk.Frame(win, bg="#1565C0")
         outer.pack(fill=tk.BOTH, expand=True, padx=B, pady=B)
-        inner = tk.Frame(outer, bg="#1e1e1e")
+        inner = tk.Frame(outer, bg="#F5F5F5")
         inner.pack(fill=tk.BOTH, expand=True)
 
-        hdr = tk.Frame(inner, bg="#0D47A1", height=48)
+        hdr = tk.Frame(inner, bg="#1565C0", height=48)
         hdr.pack(fill=tk.X); hdr.pack_propagate(False)
         hdr.bind("<ButtonPress-1>", _ds); hdr.bind("<B1-Motion>", _dm)
         tl = tk.Label(hdr, text="📄 Inspection Report",
-                      font=("Arial", 14, "bold"), fg="white", bg="#0D47A1")
+                      font=("Arial", 14, "bold"), fg="white", bg="#1565C0")
         tl.pack(side=tk.LEFT, padx=15, pady=10)
         tl.bind("<ButtonPress-1>", _ds); tl.bind("<B1-Motion>", _dm)
         tk.Button(hdr, text="✕", font=("Arial", 13, "bold"), fg="white",
-                  bg="#DC3545", bd=0, width=4, cursor="hand2",
+                  bg="#E53935", bd=0, width=4, cursor="hand2",
                   command=win.destroy).pack(side=tk.RIGHT, padx=6, pady=6)
 
         # ── calendar popup ─────────────────────────────────────────────
@@ -1232,22 +1222,22 @@ class DetectionApp:
             except: cur = dt.now()
             nav = {"y": cur.year, "m": cur.month}
             pop = tk.Toplevel(win)
-            pop.overrideredirect(True); pop.configure(bg="#1a1a1a")
+            pop.overrideredirect(True); pop.configure(bg="#FFFFFF")
             pop.attributes("-topmost", True); _cs["popup"] = pop
             win.update_idletasks()
             pop.geometry(f"+{anchor.winfo_rootx()}+"
                          f"{anchor.winfo_rooty()+anchor.winfo_height()+4}")
-            nb = tk.Frame(pop, bg="#0D47A1"); nb.pack(fill=tk.X)
+            nb = tk.Frame(pop, bg="#1565C0"); nb.pack(fill=tk.X)
             nl = tk.Label(nb, text="", font=("Arial", 10, "bold"),
-                          fg="white", bg="#0D47A1", width=16)
+                          fg="white", bg="#1565C0", width=16)
             nl.pack(side=tk.LEFT, expand=True, padx=4, pady=6)
-            bk = dict(font=("Arial", 11, "bold"), fg="white", bg="#0D47A1",
-                      activebackground="#1565C0", bd=0, cursor="hand2", width=3)
-            gf = tk.Frame(pop, bg="#1a1a1a", padx=6, pady=4); gf.pack()
+            bk = dict(font=("Arial", 11, "bold"), fg="white", bg="#1565C0",
+                      activebackground="#1976D2", bd=0, cursor="hand2", width=3)
+            gf = tk.Frame(pop, bg="#FFFFFF", padx=6, pady=4); gf.pack()
             for ci, dn in enumerate(["Mo","Tu","We","Th","Fr","Sa","Su"]):
-                fc = "#FF6B6B" if dn=="Su" else "#87CEEB" if dn=="Sa" else "#aaaaaa"
+                fc = "#E53935" if dn=="Su" else "#1565C0" if dn=="Sa" else "#555555"
                 tk.Label(gf, text=dn, font=("Arial", 8, "bold"),
-                         fg=fc, bg="#1a1a1a", width=4).grid(row=0, column=ci, pady=(0, 2))
+                         fg=fc, bg="#FFFFFF", width=4).grid(row=0, column=ci, pady=(0, 2))
             dbs = []
 
             def rnd():
@@ -1260,17 +1250,17 @@ class DetectionApp:
                 for idx in range(42):
                     dn2 = idx - fw + 1; rr = idx//7+1; cr = idx%7
                     if dn2 < 1 or dn2 > di:
-                        lb = tk.Label(gf, text="", bg="#1a1a1a", width=4)
+                        lb = tk.Label(gf, text="", bg="#FFFFFF", width=4)
                         lb.grid(row=rr, column=cr); dbs.append(lb); continue
                     ds2 = f"{y:04d}-{m:02d}-{dn2:02d}"
                     if ds2 == sel:  bc, fc = "#1565C0", "white"
                     elif ds2 == ts: bc, fc = "#2E7D32", "white"
-                    elif cr == 6:   bc, fc = "#1a1a1a", "#FF6B6B"
-                    elif cr == 5:   bc, fc = "#1a1a1a", "#87CEEB"
-                    else:           bc, fc = "#1a1a1a", "white"
+                    elif cr == 6:   bc, fc = "#FFFFFF", "#E53935"
+                    elif cr == 5:   bc, fc = "#FFFFFF", "#1565C0"
+                    else:           bc, fc = "#FFFFFF", "#222222"
                     b = tk.Button(gf, text=str(dn2), font=("Arial", 9), width=4,
-                                  bg=bc, fg=fc, activebackground="#1976D2",
-                                  activeforeground="white", bd=0, cursor="hand2",
+                                  bg=bc, fg=fc, activebackground="#BBDEFB",
+                                  activeforeground="#111111", bd=0, cursor="hand2",
                                   relief=tk.FLAT, command=lambda d=ds2: _pk(d))
                     b.grid(row=rr, column=cr, padx=1, pady=1); dbs.append(b)
 
@@ -1292,18 +1282,18 @@ class DetectionApp:
             rnd(); pop.focus_set()
 
         # ── toolbar ────────────────────────────────────────────────────
-        tb  = tk.Frame(inner, bg="#252525", pady=8); tb.pack(fill=tk.X, padx=10)
-        lk  = dict(font=("Arial", 10, "bold"), fg="white", bg="#252525")
-        ek  = dict(font=("Arial", 10), bg="#404040", fg="white",
-                   insertbackground="white", relief=tk.FLAT, state="readonly")
+        tb  = tk.Frame(inner, bg="#E3F2FD", pady=8); tb.pack(fill=tk.X, padx=10)
+        lk  = dict(font=("Arial", 10, "bold"), fg="#1565C0", bg="#E3F2FD")
+        ek  = dict(font=("Arial", 10), bg="#FFFFFF", fg="#111111",
+                   insertbackground="#1565C0", relief=tk.SOLID, bd=1, state="readonly")
         tod = dt.now(); yes = tod - timedelta(days=1)
 
         tk.Label(tb, text="📅 From:", **lk).pack(side=tk.LEFT, padx=(0, 3))
         fv = tk.StringVar(value=yes.strftime("%Y-%m-%d"))
         fe = tk.Entry(tb, textvariable=fv, width=12, **ek)
         fe.pack(side=tk.LEFT, ipady=5, padx=(0, 2))
-        tk.Button(tb, text="🗓", font=("Arial", 11), fg="white", bg="#404040",
-                  activebackground="#555", bd=0, cursor="hand2",
+        tk.Button(tb, text="🗓", font=("Arial", 11), fg="#1565C0", bg="#BBDEFB",
+                  activebackground="#90CAF9", bd=0, cursor="hand2",
                   command=lambda: _open_cal(fe, fv)
                   ).pack(side=tk.LEFT, ipady=3, padx=(0, 14))
 
@@ -1311,8 +1301,8 @@ class DetectionApp:
         tv = tk.StringVar(value=tod.strftime("%Y-%m-%d"))
         te = tk.Entry(tb, textvariable=tv, width=12, **ek)
         te.pack(side=tk.LEFT, ipady=5, padx=(0, 2))
-        tk.Button(tb, text="🗓", font=("Arial", 11), fg="white", bg="#404040",
-                  activebackground="#555", bd=0, cursor="hand2",
+        tk.Button(tb, text="🗓", font=("Arial", 11), fg="#1565C0", bg="#BBDEFB",
+                  activebackground="#90CAF9", bd=0, cursor="hand2",
                   command=lambda: _open_cal(te, tv)
                   ).pack(side=tk.LEFT, ipady=3, padx=(0, 14))
 
@@ -1320,12 +1310,12 @@ class DetectionApp:
                        bg="#1565C0", activebackground="#0D47A1",
                        bd=0, padx=12, cursor="hand2")
         rb.pack(side=tk.LEFT, ipady=5, padx=(0, 20))
-        tk.Frame(tb, bg="#555", width=2, height=28).pack(side=tk.LEFT, padx=4)
+        tk.Frame(tb, bg="#BDBDBD", width=2, height=28).pack(side=tk.LEFT, padx=4)
         tk.Label(tb, text="🔍 ค้นหา:", **lk).pack(side=tk.LEFT, padx=(8, 3))
         sv = tk.StringVar()
         se = tk.Entry(tb, textvariable=sv, width=24,
-                      font=("Arial", 10), bg="#404040", fg="white",
-                      insertbackground="white", relief=tk.FLAT)
+                      font=("Arial", 10), bg="#FFFFFF", fg="#111111",
+                      insertbackground="#1565C0", relief=tk.SOLID, bd=1)
         se.pack(side=tk.LEFT, ipady=5, padx=(0, 14))
         eb = tk.Button(tb, text="⬇️ Export CSV", font=("Arial", 10, "bold"), fg="white",
                        bg="#2E7D32", activebackground="#1B5E20",
@@ -1333,27 +1323,28 @@ class DetectionApp:
         eb.pack(side=tk.LEFT, ipady=5)
 
         # ── treeview ───────────────────────────────────────────────────
-        tf = tk.Frame(inner, bg="#1e1e1e")
+        tf = tk.Frame(inner, bg="#F5F5F5")
         tf.pack(fill=tk.BOTH, expand=True, padx=10, pady=(6, 0))
         sty = ttk.Style(); sty.theme_use("clam")
-        sty.configure("R.Treeview", background="#2b2b2b", foreground="white",
-                      rowheight=26, fieldbackground="#2b2b2b",
+        sty.configure("R.Treeview", background="#FFFFFF", foreground="#111111",
+                      rowheight=26, fieldbackground="#FFFFFF",
                       borderwidth=0, font=("Arial", 9))
-        sty.configure("R.Treeview.Heading", background="#0D47A1",
+        sty.configure("R.Treeview.Heading", background="#1565C0",
                       foreground="white", font=("Arial", 9, "bold"), relief="flat")
-        sty.map("R.Treeview", background=[("selected", "#1565C0")])
+        sty.map("R.Treeview", background=[("selected", "#BBDEFB")],
+                              foreground=[("selected", "#0D47A1")])
         vsb  = ttk.Scrollbar(tf, orient=tk.VERTICAL)
         tree = ttk.Treeview(tf, show="headings", style="R.Treeview",
                             yscrollcommand=vsb.set)
         vsb.config(command=tree.yview); vsb.pack(side=tk.RIGHT, fill=tk.Y)
         tree.pack(fill=tk.BOTH, expand=True)
-        tree.tag_configure("odd",  background="#2b2b2b")
-        tree.tag_configure("even", background="#333333")
+        tree.tag_configure("odd",  background="#FFFFFF")
+        tree.tag_configure("even", background="#F0F4FF")
 
-        ft2 = tk.Frame(inner, bg="#1a1a1a", height=38)
+        ft2 = tk.Frame(inner, bg="#E3F2FD", height=38)
         ft2.pack(fill=tk.X, side=tk.BOTTOM); ft2.pack_propagate(False)
         sl = tk.Label(ft2, text="", font=("Arial", 10, "bold"),
-                      fg="#FFD700", bg="#1a1a1a")
+                      fg="#1565C0", bg="#E3F2FD")
         sl.pack(side=tk.LEFT, padx=12, pady=8)
 
         VC  = "Processing Time"
