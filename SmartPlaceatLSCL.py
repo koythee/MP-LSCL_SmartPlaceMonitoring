@@ -447,7 +447,7 @@ class UIManager:
         self.stop_btn:                   Optional[tk.Button]       = None
         self.finished_btn:               Optional[tk.Button]       = None
         self.reset_btn:                  Optional[tk.Button]       = None
-        self.traveler_entry:             Optional[tk.Entry]        = None
+        self.lot_no_entry:               Optional[tk.Entry]        = None
         self.opt_id_entry:               Optional[tk.Entry]        = None
 
     def setup_ui(self):
@@ -502,7 +502,7 @@ class UIManager:
         SLOT_START       = [1, 21, 41]
         center = tk.Frame(parent, bg='#FFFFFF')
         center.pack(expand=True)
-        for row_idx in range(2, -1, -1):
+        for row_idx in range(3):   # Row0(1-20) บนสุด → Row1(21-40) → Row2(41-60) ล่างสุด
             row_frame = tk.Frame(center, bg='#FFFFFF')
             row_frame.pack(pady=SP)
             start = SLOT_START[row_idx]
@@ -549,9 +549,9 @@ class UIManager:
             self.input_entries[key] = e
             return e
 
-        self.traveler_entry = _row("Lot Number:", 'traveler_lot',
+        self.lot_no_entry = _row("Lot No.:", 'lot_no',
                                    bind_return=self._on_lot_enter)
-        self.traveler_entry.focus()
+        self.lot_no_entry.focus()
         self.opt_id_entry = _row("OPT ID:", 'opt_id',
                                  bind_return=self._on_opt_id_enter)
 
@@ -699,7 +699,7 @@ class UIManager:
     def validate_form_data(self) -> bool:
         data = self.get_form_data()
         missing = []
-        if not data.get('traveler_lot'): missing.append('Lot Number')
+        if not data.get('lot_no'):       missing.append('Lot No.')
         if not data.get('opt_id'):       missing.append('OPT ID')
         if missing:
             play_alarm_beep()
@@ -713,7 +713,7 @@ class UIManager:
     def clear_form(self):
         for entry in self.input_entries.values():
             entry.delete(0, tk.END)
-        self.traveler_entry.focus()
+        self.lot_no_entry.focus()
 
     def reset_time_display(self):
         self.start_label.config(text="--:--:--")
@@ -749,10 +749,10 @@ class DataManager:
             td = data.get('time_data', {})
             row = (
                 datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                fd.get('traveler_lot'),     # travlot
+                fd.get('lot_no'),           # travlot
                 None,                       # polishlot (ไม่ใช้)
                 None,                       # productsize (ไม่ใช้)
-                fd.get('opt_id'),           # nrinspector
+                fd.get('opt_id'),           # inspector
                 str(dd.get('placed_count', 0)),  # glassinput = จำนวนที่วางจริง
                 dd.get('ok_count', 0),      # ok
                 0,                          # ng
@@ -764,7 +764,7 @@ class DataManager:
             cur  = conn.cursor()
             cur.execute(
                 "INSERT INTO fp_clvi_pskipnrins "
-                "(datetime,travlot,polishlot,productsize,nrinspector,glassinput,"
+                "(datetime,travlot,polishlot,productsize,nrinspector,glassinput,"  # nrinspector = ชื่อ column ใน DB (ไม่เปลี่ยน)
                 " ok,ng,other,starttime,endtime) "
                 "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)", row)
             conn.commit()
@@ -1008,14 +1008,14 @@ class DetectionApp:
             return
 
         form_data    = self.ui_manager.get_form_data()
-        traveler_lot = form_data.get('traveler_lot', 'UNKNOWN')
+        lot_no       = form_data.get('lot_no', 'UNKNOWN')
         dt_str       = datetime.now().strftime("%Y%m%d_%H%M%S")
-        self.lot_logger          = setup_lot_logger(traveler_lot, dt_str)
+        self.lot_logger          = setup_lot_logger(lot_no, dt_str)
         self.detector.lot_logger = self.lot_logger
 
         self.lot_logger.info("=" * 50)
         self.lot_logger.info("PLACE MODE STARTED")
-        self.lot_logger.info(f"Lot Number : {traveler_lot}")
+        self.lot_logger.info(f"Lot No.   : {lot_no}")
         self.lot_logger.info(f"OPT ID     : {form_data.get('opt_id', '-')}")
         self.lot_logger.info("=" * 50)
 
@@ -1349,7 +1349,7 @@ class DetectionApp:
 
         VC  = "Processing Time"
         st  = {"dc": [], "ac": [], "raw": [], "disp": []}
-        CW  = {"datetime": 145, "travlot": 150, "nrinspector": 120,
+        CW  = {"datetime": 145, "travlot": 150, "inspector": 120,
                "glassinput": 80, "ok": 60, "ng": 60, "other": 70,
                "starttime": 130, "endtime": 130, VC: 115}
         ss: Dict = {}
