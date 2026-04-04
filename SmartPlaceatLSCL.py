@@ -264,12 +264,13 @@ class PlaceModeDetectionSystem:
             return False
 
     # ── contour helpers ──────────────────────────────────────────────────
-    def _has_object_in_slot(self, thresh, slot_num: int) -> bool:
+    def _get_slot_area(self, thresh, slot_num: int) -> float:
+        """คืน max contour area ที่อยู่ใน range ของ slot — คืน 0.0 ถ้าไม่พบ"""
         if slot_num not in self.slot_roi:
-            return False
-        x, y, w, h = self.slot_roi[slot_num]
-        exp        = self.config.expand_roi
-        img_h, img_w = thresh.shape[:2]
+            return 0.0
+        x, y, w, h   = self.slot_roi[slot_num]
+        exp           = self.config.expand_roi
+        img_h, img_w  = thresh.shape[:2]
         x0 = max(0, x - exp)
         x1 = min(img_w, x + w + exp)
         y0 = max(0, y)
@@ -279,11 +280,15 @@ class PlaceModeDetectionSystem:
             cnts, _ = cv2.findContours(
                 roi, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             for c in cnts:
-                if self.config.min_object_area < cv2.contourArea(c) < self.config.max_object_area:
-                    return True
+                area = cv2.contourArea(c)
+                if self.config.min_object_area < area < self.config.max_object_area:
+                    return area
         except Exception as e:
             logger.error(f"contour slot {slot_num}: {e}")
-        return False
+        return 0.0
+
+    def _has_object_in_slot(self, thresh, slot_num: int) -> bool:
+        return self._get_slot_area(thresh, slot_num) > 0.0
 
     def _get_scan_window(self) -> List[int]:
         """คืน EMPTY slots ที่จะ scan — เฉพาะ 6 slots ถัดจาก current_index
@@ -321,10 +326,9 @@ class PlaceModeDetectionSystem:
           - scan เฉพาะ 6 slots ถัดจาก current_index
           - detect >= 2 slots พร้อมกัน → ALARM MULTI_PLACE
           - detect == 1 slot:
-              - required_confirmations นับเฉพาะ slot เดิมต่อเนื่อง
-                ถ้า detect เปลี่ยน slot → reset counter นับใหม่
-              - gap == 3 (เว้น 2 ช่อง) → auto-skip ทันทีที่ confirm
-              - gap อื่น → ทำงานต่อปกติ ไม่ ALARM
+              - นับ place_counter เฉพาะ frames ที่ detect slot เดิมต่อเนื่อง
+              - ถ้า slot หายไป (area=0) หรือเปลี่ยน slot → reset counter ทันที
+              - ถึง required_confirmations → PLACED
         """
         if not self.initialized:
             return "NOT_INITIALIZED"
@@ -344,7 +348,19 @@ class PlaceModeDetectionSystem:
                 self.frame_counter -= 1
                 return "RUNNING"
 
+            # ── ถ้ากำลัง confirm slot อยู่ ตรวจ area ของ slot นั้นก่อน ──
+            # ถ้า area = 0 (งานหายไป/กระพริบ) → reset ทันที ไม่รอ detected list
+            if self.confirming_slot is not None:
+                area = self._get_slot_area(thresh, self.confirming_slot)
+                if area == 0.0:
+                    logger.debug(f"Slot {self.confirming_slot} area=0, reset counter "
+                                 f"({self.place_counter}/{self.config.required_confirmations})")
+                    self.place_counter   = 0
+                    self.confirming_slot = None
+                    return "RUNNING"
+
             if not detected:
+                # ไม่มี object ใน window เลย
                 self.place_counter   = 0
                 self.confirming_slot = None
                 return "RUNNING"
@@ -356,13 +372,12 @@ class PlaceModeDetectionSystem:
                 self.place_counter   = 0
                 self.confirming_slot = slot
 
-            # ── ยืนยัน consecutive frames ────────────────────────────
+            # ── นับ consecutive frames ────────────────────────────────
             self.place_counter += 1
             if self.place_counter < self.config.required_confirmations:
                 return "RUNNING"
 
             # ── PLACED confirmed ──────────────────────────────────────
-            # ตรวจ gap → auto-skip ช่องที่ข้าม (ทำก่อน update current_index)
             if self.last_placed > 0:
                 gap = slot - self.last_placed
                 if gap == 3:
@@ -377,20 +392,17 @@ class PlaceModeDetectionSystem:
                     if self.lot_logger:
                         self.lot_logger.info(f"[GAP] gap={gap} | {self.last_placed}→{slot}")
 
-            # mark PLACED
             self.states[slot]    = PlaceState.PLACED
             self.last_placed     = slot
             self.placed_count   += 1
             self.place_counter   = 0
             self.confirming_slot = None
 
-            # อัปเดต current_index → slot EMPTY ถัดไปที่ไม่ใช่ skipped
             remaining = [s for s in self.all_slots
                          if self.states.get(s) == PlaceState.EMPTY
                          and s not in self.skipped_slots]
             if remaining:
                 self.current_index = remaining[0]
-            # current_index อัปเดตแล้ว scan window frame ถัดไปจะถูกต้องทันที
 
             logger.info(f"Slot {slot} PLACED (total={self.placed_count})")
             if self.lot_logger:
