@@ -141,6 +141,7 @@ class PlaceModeDetectionSystem:
 
         self.place_counter:   int  = 0
         self.frame_counter:   int  = 0
+        self.confirming_slot: Optional[int] = None   # slot ที่กำลัง confirm อยู่
         self.alarm_triggered: bool = False
 
         self.alarm_callback:        Optional[Callable] = None
@@ -217,6 +218,7 @@ class PlaceModeDetectionSystem:
         self.placed_count    = 0
         self.place_counter   = 0
         self.frame_counter   = 0
+        self.confirming_slot = None
         self.alarm_triggered = False
         self.initialized     = False
 
@@ -297,13 +299,13 @@ class PlaceModeDetectionSystem:
         Returns: "NOT_INITIALIZED" | "RUNNING" | "ALARM"
 
         Logic:
-          - detect >= 2 slots พร้อมกัน → ALARM MULTI_PLACE
+          - detect >= 2 slots พร้อมกัน → ALARM MULTI_PLACE (หยุดทันที)
           - detect == 1 slot:
-              gap = slot_detected - last_placed
-              gap == 1 → ปกติ วางถัดไป
-              gap == 3 → เว้น 2 ช่อง (auto-skip) → ปกติ
-              gap อื่น → ALARM WRONG_GAP
-          - ยืนยัน required_confirmations frames ก่อน PLACED
+              - required_confirmations นับเฉพาะ slot เดิมต่อเนื่อง
+                ถ้า detect เปลี่ยน slot → reset counter นับใหม่
+              - gap == 1  → ปกติ วางถัดกัน
+              - gap == 3  → auto-skip 2 ช่อง → ปกติ
+              - gap อื่น  → ถือว่า skip/ข้ามปกติ ไม่ ALARM ทำงานต่อ
         """
         if not self.initialized:
             return "NOT_INITIALIZED"
@@ -311,10 +313,9 @@ class PlaceModeDetectionSystem:
             return "ALARM"
 
         try:
-            # scan ทุก EMPTY slot ที่พบ object
             detected = self._get_newly_detected(thresh)
 
-            # ── MULTI_PLACE: วาง 2+ ชิ้นพร้อมกัน ────────────────────
+            # ── MULTI_PLACE: วาง 2+ ชิ้นพร้อมกัน → ALARM ────────────
             if len(detected) >= 2:
                 self._trigger_alarm("MULTI_PLACE", detected, self.current_index)
                 return "ALARM"
@@ -325,62 +326,61 @@ class PlaceModeDetectionSystem:
                 return "RUNNING"
 
             if not detected:
-                self.place_counter = 0
+                # ไม่มี object → reset counter (ต้องนับใหม่ถ้าวางกลับ)
+                self.place_counter    = 0
+                self.confirming_slot  = None
                 return "RUNNING"
 
             slot = detected[0]
 
-            # ── ตรวจ gap ─────────────────────────────────────────────
-            if self.last_placed == 0:
-                # วางชิ้นแรก — ยอมรับ slot ใดก็ได้ใน all_slots
-                gap_ok = True
-            else:
+            # ── reset counter ถ้า detect เปลี่ยน slot ────────────────
+            if slot != self.confirming_slot:
+                self.place_counter   = 0
+                self.confirming_slot = slot
+
+            # ── ยืนยัน consecutive frames ────────────────────────────
+            self.place_counter += 1
+            if self.place_counter < self.config.required_confirmations:
+                return "RUNNING"
+
+            # ── PLACED confirmed ──────────────────────────────────────
+            # ตรวจ gap เพื่อ auto-skip (ไม่ ALARM ไม่ว่า gap จะเป็นเท่าไหร่)
+            if self.last_placed > 0:
                 gap = slot - self.last_placed
-                if gap == 1:
-                    # ติดกัน — ปกติ
-                    gap_ok = True
-                elif gap == 3:
+                if gap == 3:
                     # เว้น 2 ช่อง — auto-skip
-                    skip1 = self.last_placed + 1
-                    skip2 = self.last_placed + 2
-                    for sk in [skip1, skip2]:
+                    for sk in [self.last_placed + 1, self.last_placed + 2]:
                         if sk not in self.skipped_slots:
                             self.skipped_slots.append(sk)
                             logger.info(f"Auto-skip slot {sk} (gap=3 after {self.last_placed})")
                             if self.lot_logger:
                                 self.lot_logger.info(f"[SKIP] Slot {sk} skipped (gap=3)")
-                    gap_ok = True
-                else:
-                    # gap ผิดปกติ (2, 4+)
-                    self._trigger_alarm("WRONG_GAP", [slot], self.last_placed)
-                    return "ALARM"
+                elif gap > 1:
+                    # gap อื่น — บันทึก log แต่ไม่ ALARM ทำงานปกติต่อ
+                    logger.info(f"Gap={gap} detected (slot {self.last_placed}→{slot}), continuing")
+                    if self.lot_logger:
+                        self.lot_logger.info(f"[GAP] gap={gap} | {self.last_placed}→{slot}")
 
-            if not gap_ok:
-                return "RUNNING"
+            self.states[slot]    = PlaceState.PLACED
+            self.last_placed     = slot
+            self.placed_count   += 1
+            self.place_counter   = 0
+            self.confirming_slot = None
 
-            # ── ยืนยัน confirm ────────────────────────────────────────
-            self.place_counter += 1
-            if self.place_counter >= self.config.required_confirmations:
-                self.states[slot]  = PlaceState.PLACED
-                self.last_placed   = slot
-                self.placed_count += 1
+            # อัปเดต current_index → slot EMPTY ถัดไปที่ไม่ใช่ skipped
+            remaining = [s for s in self.all_slots
+                         if self.states.get(s) == PlaceState.EMPTY
+                         and s not in self.skipped_slots]
+            if remaining:
+                self.current_index = remaining[0]
 
-                # อัปเดต current_index → slot EMPTY ถัดไปที่ไม่ใช่ skipped
-                remaining = [s for s in self.all_slots
-                             if self.states.get(s) == PlaceState.EMPTY
-                             and s not in self.skipped_slots]
-                if remaining:
-                    self.current_index = remaining[0]
+            logger.info(f"Slot {slot} PLACED (total={self.placed_count})")
+            if self.lot_logger:
+                self.lot_logger.info(f"[PLACE] Slot {slot} PLACED (total={self.placed_count})")
+            self._notify_state_change(slot, PlaceState.PLACED)
 
-                logger.info(f"Slot {slot} PLACED (total={self.placed_count})")
-                if self.lot_logger:
-                    self.lot_logger.info(f"[PLACE] Slot {slot} PLACED (total={self.placed_count})")
-                self._notify_state_change(slot, PlaceState.PLACED)
-
-                self.place_counter = 0
-                self.frame_counter = self.config.delay_frames
-                self._trigger_ui_update()
-
+            self.frame_counter = self.config.delay_frames
+            self._trigger_ui_update()
             return "RUNNING"
 
         except Exception as e:
@@ -958,13 +958,6 @@ class DetectionApp:
             title = "⚠️ วางหลายชิ้นพร้อมกัน!"
             msg   = (f"❌ ตรวจพบชิ้นงาน {len(slots)} ตำแหน่งพร้อมกัน!\n\n"
                      f"🔴 ตำแหน่งที่พบ : {slots}\n\n"
-                     f"กรุณากด 🔄 Reset และเริ่มใหม่")
-        elif alarm_type == "WRONG_GAP":
-            gap = slots[0] - expected if expected > 0 else "?"
-            title = "⚠️ วางผิดลำดับ!"
-            msg   = (f"❌ วางที่ช่อง {slots[0]} (gap={gap})\n"
-                     f"    ช่องก่อนหน้า : {expected}\n\n"
-                     f"Gap ที่ยอมรับได้ : 1 (ติดกัน) หรือ 3 (เว้น 2 ช่อง)\n\n"
                      f"กรุณากด 🔄 Reset และเริ่มใหม่")
         else:
             title = "⚠️ ผิดพลาด!"
