@@ -142,6 +142,7 @@ class PlaceModeDetectionSystem:
         self.place_counter:   int  = 0
         self.frame_counter:   int  = 0
         self.confirming_slot: Optional[int] = None   # slot ที่กำลัง confirm อยู่
+        self.multi_counter:   int  = 0               # นับ frames ที่ detect >= 2 slots ต่อเนื่อง
         self.alarm_triggered: bool = False
 
         self.alarm_callback:        Optional[Callable] = None
@@ -219,6 +220,7 @@ class PlaceModeDetectionSystem:
         self.place_counter   = 0
         self.frame_counter   = 0
         self.confirming_slot = None
+        self.multi_counter   = 0
         self.alarm_triggered = False
         self.initialized     = False
 
@@ -324,7 +326,8 @@ class PlaceModeDetectionSystem:
 
         Logic:
           - scan เฉพาะ 6 slots ถัดจาก current_index
-          - detect >= 2 slots พร้อมกัน → ALARM MULTI_PLACE
+          - detect >= 2 slots ต่อเนื่อง required_confirmations frames → ALARM MULTI_PLACE
+            (ถ้า frame ใดพบน้อยกว่า 2 → reset multi_counter)
           - detect == 1 slot:
               - นับ place_counter เฉพาะ frames ที่ detect slot เดิมต่อเนื่อง
               - ถ้า slot หายไป (area=0) หรือเปลี่ยน slot → reset counter ทันที
@@ -338,10 +341,19 @@ class PlaceModeDetectionSystem:
         try:
             detected = self._get_newly_detected(thresh)
 
-            # ── MULTI_PLACE: วาง 2+ ชิ้นพร้อมกัน → ALARM ────────────
+            # ── MULTI_PLACE: ต้อง detect >= 2 ต่อเนื่อง required_confirmations frames ──
             if len(detected) >= 2:
-                self._trigger_alarm("MULTI_PLACE", detected, self.current_index)
-                return "ALARM"
+                self.multi_counter += 1
+                # reset place counter เพราะไม่ใช่การวางชิ้นเดียว
+                self.place_counter   = 0
+                self.confirming_slot = None
+                if self.multi_counter >= self.config.required_confirmations:
+                    self._trigger_alarm("MULTI_PLACE", detected, self.current_index)
+                    return "ALARM"
+                return "RUNNING"
+            else:
+                # ไม่ถึง 2 → reset multi_counter ทันที
+                self.multi_counter = 0
 
             # ── frame delay หลัง PLACED ──────────────────────────────
             if self.frame_counter > 0:
