@@ -292,6 +292,69 @@ class PlaceModeDetectionSystem:
     def _has_object_in_slot(self, thresh, slot_num: int) -> bool:
         return self._get_slot_area(thresh, slot_num) > 0.0
 
+    def _slots_are_adjacent(self, slot_a: int, slot_b: int) -> bool:
+        """ตรวจว่า slot_a และ slot_b อยู่ติดกัน (ห่างกัน 1) ในแถวเดียวกัน"""
+        if abs(slot_a - slot_b) != 1:
+            return False
+        # ต้องอยู่แถวเดียวกัน — ห้ามข้ามแถว
+        for start in self.slot_config.slot_start:
+            end = start + self.slot_config.boxes[self.slot_config.slot_start.index(start)].slots - 1
+            if start <= slot_a <= end and start <= slot_b <= end:
+                return True
+        return False
+
+    def _resolve_boundary_overlap(self, thresh, detected: List[int]) -> List[int]:
+        """
+        ถ้า detect >= 2 slots และ slots ติดกัน (adjacent) →
+        ตรวจว่าเป็นชิ้นเดียวที่วางตรงรอยต่อหรือไม่
+        โดยเปรียบเทียบ area ของแต่ละ slot (ไม่ expand ROI)
+        slot ที่มี area สูงกว่าคือตำแหน่งจริง → คืน [slot นั้น]
+        ถ้าไม่ใช่ adjacent หรือ area ใกล้เคียงกันมาก → คืน detected เดิม (MULTI_PLACE จริง)
+        """
+        if len(detected) != 2:
+            return detected
+
+        s_a, s_b = detected[0], detected[1]
+        if not self._slots_are_adjacent(s_a, s_b):
+            return detected   # ไม่ติดกัน → MULTI_PLACE จริง
+
+        # วัด area โดยไม่ expand (strict ROI) เพื่อหาว่าอยู่ฝั่งไหนมากกว่า
+        area_a = self._get_strict_slot_area(thresh, s_a)
+        area_b = self._get_strict_slot_area(thresh, s_b)
+
+        if area_a == 0.0 and area_b == 0.0:
+            return detected   # ไม่มีข้อมูล → ให้ MULTI_PLACE จัดการ
+
+        # ถ้า area ต่างกันชัดเจน (> 30%) → ชิ้นเดียวอยู่ฝั่งที่มากกว่า
+        total = area_a + area_b
+        ratio = max(area_a, area_b) / total if total > 0 else 0
+        if ratio >= 0.6:
+            winner = s_a if area_a >= area_b else s_b
+            logger.debug(f"Boundary overlap resolved: slots {s_a},{s_b} → slot {winner} "
+                         f"(area_a={area_a:.0f} area_b={area_b:.0f})")
+            return [winner]
+
+        return detected   # area ใกล้เคียงกัน → MULTI_PLACE จริง
+
+    def _get_strict_slot_area(self, thresh, slot_num: int) -> float:
+        """วัด area โดยไม่ expand ROI — ใช้สำหรับ boundary resolution เท่านั้น"""
+        if slot_num not in self.slot_roi:
+            return 0.0
+        x, y, w, h  = self.slot_roi[slot_num]
+        img_h, img_w = thresh.shape[:2]
+        roi = thresh[max(0, y):min(img_h, y+h), max(0, x):min(img_w, x+w)]
+        try:
+            cnts, _ = cv2.findContours(roi, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            best = 0.0
+            for c in cnts:
+                area = cv2.contourArea(c)
+                if self.config.min_object_area < area < self.config.max_object_area:
+                    best = max(best, area)
+            return best
+        except Exception as e:
+            logger.error(f"strict area slot {slot_num}: {e}")
+        return 0.0
+
     def _get_scan_window(self) -> List[int]:
         """คืน EMPTY slots ที่จะ scan — เฉพาะ 6 slots ถัดจาก current_index
         เพื่อลด CPU และหลีกเลี่ยง false positive จาก slots ที่ไกลเกินไป"""
@@ -308,15 +371,21 @@ class PlaceModeDetectionSystem:
         return window
 
     def _get_newly_detected(self, thresh) -> List[int]:
-        """คืน slots ใน scan window ที่พบ object — dedup ด้วย set เพื่อป้องกัน slot ซ้ำ"""
-        seen    = set()
-        result  = []
+        """คืน slots ใน scan window ที่พบ object
+        ถ้าพบ 2 slots ติดกัน → ตรวจ boundary overlap ก่อน เพื่อกรองกรณีชิ้นงานอยู่ตรงรอยต่อ"""
+        seen   = set()
+        result = []
         for s in self._get_scan_window():
             if s in seen:
                 continue
             seen.add(s)
             if self._has_object_in_slot(thresh, s):
                 result.append(s)
+
+        # แก้ false positive จากชิ้นงานอยู่ตรงรอยต่อของ 2 slots ติดกัน
+        if len(result) >= 2:
+            result = self._resolve_boundary_overlap(thresh, result)
+
         return result
 
     # ── state machine ────────────────────────────────────────────────────
