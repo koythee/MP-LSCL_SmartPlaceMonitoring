@@ -5,7 +5,7 @@ import logging
 import threading
 import numpy as np
 import tkinter as tk
-from mysql.connector import pooling, Error
+##from mysql.connector import pooling, Error
 from GetFrame import Camera
 from datetime import datetime
 from PIL import Image, ImageTk
@@ -175,6 +175,10 @@ class PlaceModeDetectionSystem:
             gray = frame if len(frame.shape) == 2 else cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             _, thresh = cv2.threshold(
                 gray, self.config.threshold_value, 255, cv2.THRESH_BINARY_INV)
+            
+            resized_th = cv2.resize(thresh, (550, 800))
+            cv2.imshow('shoiw', resized_th)
+            
             k = np.ones((3, 3), np.uint8)
             return gray, cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, k)
         except Exception as e:
@@ -227,6 +231,7 @@ class PlaceModeDetectionSystem:
                     roi, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
                 for c in cnts:
                     area = cv2.contourArea(c)
+                    print(area)
                     if self.config.min_object_area < area < self.config.max_object_area:
                         logger.warning(f"Tray not empty (row {row_idx})")
                         return False
@@ -399,7 +404,7 @@ class PlaceModeDetectionSystem:
                     color = (0, 0, 255) if self.alarm_triggered else (0, 255, 255)
                     thick = 4                                  # Cyan / Red
                 else:
-                    color, thick = (80, 80, 80), 1            # Gray
+                    color, thick = (255, 0, 0), 2            # Gray
 
                 cv2.rectangle(frame, (x, y), (x+w, y+h), color, thick)
 
@@ -729,15 +734,15 @@ class DataManager:
         self.log_folder = "inspection_logs"
         self.mysql_pool = None
         os.makedirs(self.log_folder, exist_ok=True)
-        self._init_mysql()
+        # self._init_mysql()
 
-    def _init_mysql(self):
-        try:
-            self.mysql_pool = pooling.MySQLConnectionPool(**DatabaseConfig.MYSQL_CONFIG)
-            logger.info("MySQL pool ready")
-        except Error as e:
-            logger.error(f"MySQL pool: {e}")
-            self.mysql_pool = None
+    # def _init_mysql(self):
+    #     try:
+    #         self.mysql_pool = pooling.MySQLConnectionPool(**DatabaseConfig.MYSQL_CONFIG)
+    #         logger.info("MySQL pool ready")
+    #     except Error as e:
+    #         logger.error(f"MySQL pool: {e}")
+    #         self.mysql_pool = None
 
     def save_mysql(self, data: Dict) -> bool:
         if not self.mysql_pool:
@@ -967,7 +972,7 @@ class DetectionApp:
                     if len(display.shape) == 2:
                         display = cv2.cvtColor(display, cv2.COLOR_GRAY2BGR)
                     for x, y, w, h in self.detector.Box:
-                        cv2.rectangle(display, (x, y), (x+w, y+h), (60, 60, 60), 2)
+                        cv2.rectangle(display, (x, y), (x+w, y+h), (255, 0, 0), 3)
 
                 self._display_frame(display)
             except Exception as e:
