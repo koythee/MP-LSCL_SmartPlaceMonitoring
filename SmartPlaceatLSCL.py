@@ -216,25 +216,27 @@ class PlaceModeDetectionSystem:
         """
         หา X จริงของชิ้นแรกใน row_idx จาก contour centroid
         แล้วสร้าง ROI ทั้งแถวโดย:
-          slot แรก  : x = centroid_x ของชิ้นแรก
-          slot 2-N-1: x += 25px ต่อช่อง
-          slot สุดท้าย: x_end = roi_box.x + roi_box.w (ขอบขวา ROI)
+          center ของแต่ละ slot = first_center + i * 25px
+          ROI ของแต่ละ slot   = (center - expand_roi) ถึง (center + expand_roi)
+          slot สุดท้าย        = สิ้นสุดที่ขอบขวา ROI เสมอ
         """
         roi_box    = self.slot_config.boxes[row_idx]
         n_slots    = roi_box.slots
         slot_start = self.slot_config.slot_start[row_idx]
-        STEP       = 25   # px ต่อช่อง
+        STEP       = 25                      # px ระหว่าง center ของแต่ละ slot
+        exp        = self.config.expand_roi  # ±px รอบ center
         slot_h     = roi_box.h
+        row_right_edge = roi_box.x + roi_box.w
 
-        # หา centroid X ของชิ้นแรกในพื้นที่ทั้งแถว
+        # ── หา centroid X ของชิ้นแรกในพื้นที่ทั้งแถว ─────────────────
         img_h, img_w = thresh.shape[:2]
         rx0 = max(0, roi_box.x)
-        rx1 = min(img_w, roi_box.x + roi_box.w)
+        rx1 = min(img_w, row_right_edge)
         ry0 = max(0, roi_box.y)
         ry1 = min(img_h, roi_box.y + slot_h)
         row_roi = thresh[ry0:ry1, rx0:rx1]
 
-        first_x = None
+        first_center = None
         try:
             cnts, _ = cv2.findContours(row_roi, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             best_area, best_cx = 0.0, None
@@ -243,41 +245,44 @@ class PlaceModeDetectionSystem:
                 if self.config.min_object_area < area < self.config.max_object_area:
                     M = cv2.moments(c)
                     if M["m00"] > 0:
-                        cx = int(M["m10"] / M["m00"]) + rx0   # แปลงกลับเป็น image coords
+                        cx = int(M["m10"] / M["m00"]) + rx0   # image coords
                         if area > best_area:
                             best_area, best_cx = area, cx
-            first_x = best_cx
+            first_center = best_cx
         except Exception as e:
             logger.error(f"calibrate row {row_idx}: {e}")
 
-        if first_x is None:
-            # ไม่พบ contour → fallback ใช้ขอบซ้ายของ ROI
-            first_x = roi_box.x
-            logger.warning(f"Row {row_idx}: calibration fallback to roi.x={first_x}")
+        if first_center is None:
+            first_center = roi_box.x + exp   # fallback
+            logger.warning(f"Row {row_idx}: calibration fallback center={first_center}")
 
-        logger.info(f"Row {row_idx} calibrated: first_slot={first_slot_num} x={first_x}")
+        logger.info(f"Row {row_idx} calibrated: first_slot={first_slot_num} center={first_center}")
         if self.lot_logger:
-            self.lot_logger.info(f"[CALIB] row={row_idx} first_slot={first_slot_num} x={first_x}")
+            self.lot_logger.info(
+                f"[CALIB] row={row_idx} first_slot={first_slot_num} center={first_center}")
 
-        # สร้าง ROI ทีละ slot
-        row_right_edge = roi_box.x + roi_box.w
+        # ── สร้าง ROI ทีละ slot จาก center ─────────────────────────────
         for i in range(n_slots):
             slot_num = slot_start + i
-            if i == 0:
-                x_left = first_x
-            else:
-                x_left = first_x + i * STEP
+            center   = first_center + i * STEP
+
+            x_left = max(roi_box.x, center - exp)
 
             if i == n_slots - 1:
-                # ช่องสุดท้าย → สิ้นสุดที่ขอบขวา ROI
-                slot_w = max(STEP, row_right_edge - x_left)
+                # slot สุดท้าย → สิ้นสุดที่ขอบขวา ROI เสมอ
+                x_right = row_right_edge
             else:
-                slot_w = STEP
+                x_right = min(row_right_edge, center + exp)
 
+            slot_w = max(1, x_right - x_left)
             self.slot_roi[slot_num] = (x_left, roi_box.y, slot_w, slot_h)
 
-        logger.info(f"Row {row_idx} ROI built: slots {slot_start}–{slot_start+n_slots-1}, "
-                    f"x={first_x}..{row_right_edge}")
+            logger.debug(f"  slot {slot_num}: center={center} "
+                         f"ROI=[{x_left}, {x_right}] w={slot_w}")
+
+        logger.info(f"Row {row_idx} ROI built: {n_slots} slots, "
+                    f"centers {first_center}..{first_center+(n_slots-1)*STEP}, "
+                    f"right_edge={row_right_edge}")
 
     # ── reset state (ไม่ rebuild ROI) ───────────────────────────────────
     def _reset_state(self):
