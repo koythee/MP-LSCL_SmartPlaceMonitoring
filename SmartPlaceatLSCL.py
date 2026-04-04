@@ -133,9 +133,11 @@ class PlaceModeDetectionSystem:
         self.all_slots:       List[int]             = []
         self.slot_roi:        Dict[int, Tuple]      = {}
         self.states:          Dict[int, PlaceState] = {}
-        self.skipped_slots:   List[int]             = []   # ช่องที่ถูก skip (เว้น)
+        self.skipped_slots:   List[int]             = []
+        self.row_of_slot:     Dict[int, int]        = {}   # slot_num → row_idx
+        self.calibrated_rows: set                   = set()  # rows ที่ calibrate แล้ว
         self.current_index:   int  = 1
-        self.last_placed:     int  = 0    # slot ล่าสุดที่วางสำเร็จ (0 = ยังไม่วาง)
+        self.last_placed:     int  = 0
         self.placed_count:    int  = 0
         self.initialized:     bool = False
 
@@ -190,30 +192,99 @@ class PlaceModeDetectionSystem:
             logger.error(f"preprocess: {e}")
             return None
 
-    # ── build full slot grid (3 rows × 20 slots = 60) ────────────────
+    # ── build slot registry (ลงทะเบียน slot numbers และ row info ไว้ก่อน) ──
     def _build_full_slot_grid(self):
-        """สร้าง ROI ครบ 60 slots — Left-to-Right ทุกแถว"""
+        """ลงทะเบียน slot numbers ทั้งหมด — ROI จริงจะสร้างหลัง detect ชิ้นแรก"""
         self.slot_roi.clear()
         self.all_slots.clear()
+        self.row_of_slot.clear()    # slot_num → row_idx
 
         for row_idx in range(3):
             roi_box    = self.slot_config.boxes[row_idx]
             n_slots    = roi_box.slots
             slot_start = self.slot_config.slot_start[row_idx]
-            slot_w     = roi_box.w // n_slots
-
             for i in range(n_slots):
                 slot_num = slot_start + i
-                x = roi_box.x + i * slot_w   # Left-to-Right
-                self.slot_roi[slot_num] = (x, roi_box.y, slot_w, roi_box.h)
                 self.all_slots.append(slot_num)
+                self.row_of_slot[slot_num] = row_idx
+                # ROI ยังไม่สร้าง — รอ _calibrate_row_from_first_piece()
 
         self.all_slots = sorted(self.all_slots)
+
+    # ── detect ตำแหน่ง X ของชิ้นแรกในแถว แล้วสร้าง ROI ทั้งแถว ──────────
+    def _calibrate_row_from_first_piece(self, thresh, row_idx: int, first_slot_num: int):
+        """
+        หา X จริงของชิ้นแรกใน row_idx จาก contour centroid
+        แล้วสร้าง ROI ทั้งแถวโดย:
+          slot แรก  : x = centroid_x ของชิ้นแรก
+          slot 2-N-1: x += 25px ต่อช่อง
+          slot สุดท้าย: x_end = roi_box.x + roi_box.w (ขอบขวา ROI)
+        """
+        roi_box    = self.slot_config.boxes[row_idx]
+        n_slots    = roi_box.slots
+        slot_start = self.slot_config.slot_start[row_idx]
+        STEP       = 25   # px ต่อช่อง
+        slot_h     = roi_box.h
+
+        # หา centroid X ของชิ้นแรกในพื้นที่ทั้งแถว
+        img_h, img_w = thresh.shape[:2]
+        rx0 = max(0, roi_box.x)
+        rx1 = min(img_w, roi_box.x + roi_box.w)
+        ry0 = max(0, roi_box.y)
+        ry1 = min(img_h, roi_box.y + slot_h)
+        row_roi = thresh[ry0:ry1, rx0:rx1]
+
+        first_x = None
+        try:
+            cnts, _ = cv2.findContours(row_roi, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            best_area, best_cx = 0.0, None
+            for c in cnts:
+                area = cv2.contourArea(c)
+                if self.config.min_object_area < area < self.config.max_object_area:
+                    M = cv2.moments(c)
+                    if M["m00"] > 0:
+                        cx = int(M["m10"] / M["m00"]) + rx0   # แปลงกลับเป็น image coords
+                        if area > best_area:
+                            best_area, best_cx = area, cx
+            first_x = best_cx
+        except Exception as e:
+            logger.error(f"calibrate row {row_idx}: {e}")
+
+        if first_x is None:
+            # ไม่พบ contour → fallback ใช้ขอบซ้ายของ ROI
+            first_x = roi_box.x
+            logger.warning(f"Row {row_idx}: calibration fallback to roi.x={first_x}")
+
+        logger.info(f"Row {row_idx} calibrated: first_slot={first_slot_num} x={first_x}")
+        if self.lot_logger:
+            self.lot_logger.info(f"[CALIB] row={row_idx} first_slot={first_slot_num} x={first_x}")
+
+        # สร้าง ROI ทีละ slot
+        row_right_edge = roi_box.x + roi_box.w
+        for i in range(n_slots):
+            slot_num = slot_start + i
+            if i == 0:
+                x_left = first_x
+            else:
+                x_left = first_x + i * STEP
+
+            if i == n_slots - 1:
+                # ช่องสุดท้าย → สิ้นสุดที่ขอบขวา ROI
+                slot_w = max(STEP, row_right_edge - x_left)
+            else:
+                slot_w = STEP
+
+            self.slot_roi[slot_num] = (x_left, roi_box.y, slot_w, slot_h)
+
+        logger.info(f"Row {row_idx} ROI built: slots {slot_start}–{slot_start+n_slots-1}, "
+                    f"x={first_x}..{row_right_edge}")
 
     # ── reset state (ไม่ rebuild ROI) ───────────────────────────────────
     def _reset_state(self):
         self.states.clear()
         self.skipped_slots.clear()
+        self.calibrated_rows.clear()
+        self.slot_roi.clear()          # ล้าง ROI เพื่อ calibrate ใหม่ครั้งถัดไป
         self.current_index   = self.all_slots[0] if self.all_slots else 1
         self.last_placed     = 0
         self.placed_count    = 0
@@ -357,18 +428,28 @@ class PlaceModeDetectionSystem:
 
     def _get_scan_window(self) -> List[int]:
         """คืน EMPTY slots ที่จะ scan — เฉพาะ 6 slots ถัดจาก current_index
-        เพื่อลด CPU และหลีกเลี่ยง false positive จาก slots ที่ไกลเกินไป"""
+        เฉพาะ slots ที่ row ถูก calibrate แล้ว (มี slot_roi) เท่านั้น"""
         window = []
         count  = 0
         for s in self.all_slots:
             if s < self.current_index:
                 continue
-            if self.states.get(s) == PlaceState.EMPTY and s not in self.skipped_slots:
+            if (self.states.get(s) == PlaceState.EMPTY
+                    and s not in self.skipped_slots
+                    and s in self.slot_roi):          # เฉพาะ slot ที่มี ROI แล้ว
                 window.append(s)
                 count += 1
                 if count >= 6:
                     break
         return window
+
+    def _ensure_row_calibrated(self, thresh, slot_num: int):
+        """ถ้า row ของ slot_num ยังไม่ถูก calibrate → calibrate ทันที"""
+        row_idx = self.row_of_slot.get(slot_num)
+        if row_idx is None or row_idx in self.calibrated_rows:
+            return
+        self._calibrate_row_from_first_piece(thresh, row_idx, slot_num)
+        self.calibrated_rows.add(row_idx)
 
     def _get_newly_detected(self, thresh) -> List[int]:
         """คืน slots ใน scan window ที่พบ object
@@ -408,6 +489,26 @@ class PlaceModeDetectionSystem:
             return "ALARM"
 
         try:
+            # ── calibrate row ปัจจุบันถ้ายังไม่ได้ทำ ─────────────────
+            # ตรวจ row ของ current_index และทำ wide-scan ทั้งแถวเพื่อหา X แรก
+            cur_row = self.row_of_slot.get(self.current_index)
+            if cur_row is not None and cur_row not in self.calibrated_rows:
+                # wide scan ทั้ง row เพื่อรอชิ้นแรก
+                roi_box = self.slot_config.boxes[cur_row]
+                img_h, img_w = thresh.shape[:2]
+                rx0 = max(0, roi_box.x)
+                rx1 = min(img_w, roi_box.x + roi_box.w)
+                ry0 = max(0, roi_box.y)
+                ry1 = min(img_h, roi_box.y + roi_box.h)
+                row_roi = thresh[ry0:ry1, rx0:rx1]
+                cnts, _ = cv2.findContours(row_roi, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                has_piece = any(
+                    self.config.min_object_area < cv2.contourArea(c) < self.config.max_object_area
+                    for c in cnts
+                )
+                if has_piece:
+                    self._ensure_row_calibrated(thresh, self.current_index)
+
             detected = self._get_newly_detected(thresh)
 
             # ── MULTI_PLACE: ต้อง detect >= 2 ต่อเนื่อง required_confirmations frames ──
@@ -484,6 +585,10 @@ class PlaceModeDetectionSystem:
                          and s not in self.skipped_slots]
             if remaining:
                 self.current_index = remaining[0]
+                # ถ้า current_index ข้ามไปแถวใหม่ที่ยังไม่ calibrate → เตรียม calibrate ไว้
+                next_row = self.row_of_slot.get(self.current_index)
+                if next_row is not None and next_row not in self.calibrated_rows:
+                    logger.info(f"Next row {next_row} not yet calibrated — will calibrate on first piece")
 
             logger.info(f"Slot {slot} PLACED (total={self.placed_count})")
             if self.lot_logger:
