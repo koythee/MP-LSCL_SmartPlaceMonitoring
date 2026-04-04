@@ -7,7 +7,7 @@
         "y": 2970,
         "w": 2105,
         "h": 30,
-        "slots": 20
+        "slots": 16
       },
       {
         "name": "Row 1",
@@ -15,7 +15,7 @@
         "y": 1780,
         "w": 2105,
         "h": 30,
-        "slots": 20
+        "slots": 16
       },
       {
         "name": "Row 2",
@@ -23,12 +23,12 @@
         "y": 1260,
         "w": 2105,
         "h": 30,
-        "slots": 20
+        "slots": 16
       }
     ],
-    "slots_per_row": [20, 20, 20],
-    "slot_start": [1, 21, 41],
-    "total_slots": 60
+    "slots_per_row": [16, 16, 16],
+    "slot_start": [1, 17, 33],
+    "total_slots": 48
   },
   "DetectionConfig": {
     "required_confirmations": 5,
