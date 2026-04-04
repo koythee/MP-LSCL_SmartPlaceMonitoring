@@ -37,6 +37,7 @@
     "min_object_area": 50,
     "max_object_area": 120,
     "expand_roi": 15,
+    "slot_step": 25,
     "threshold_value": 145
   }
 }

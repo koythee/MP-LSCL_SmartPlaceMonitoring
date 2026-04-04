@@ -74,6 +74,7 @@ class DetectionConfig:
         self.min_object_area        = cfg["min_object_area"]
         self.max_object_area        = cfg["max_object_area"]
         self.expand_roi             = cfg["expand_roi"]
+        self.slot_step              = cfg.get("slot_step", 25)
         self.threshold_value        = cfg["threshold_value"]
 
 
@@ -223,7 +224,7 @@ class PlaceModeDetectionSystem:
         roi_box    = self.slot_config.boxes[row_idx]
         n_slots    = roi_box.slots
         slot_start = self.slot_config.slot_start[row_idx]
-        STEP       = 25                      # px ระหว่าง center ของแต่ละ slot
+        STEP       = self.config.slot_step   # px ระหว่าง center ของแต่ละ slot (จาก config)
         exp        = self.config.expand_roi  # ±px รอบ center
         slot_h     = roi_box.h
         row_right_edge = roi_box.x + roi_box.w
