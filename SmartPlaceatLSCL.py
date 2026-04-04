@@ -285,13 +285,32 @@ class PlaceModeDetectionSystem:
             logger.error(f"contour slot {slot_num}: {e}")
         return False
 
+    def _get_scan_window(self) -> List[int]:
+        """คืน EMPTY slots ที่จะ scan — เฉพาะ 6 slots ถัดจาก current_index
+        เพื่อลด CPU และหลีกเลี่ยง false positive จาก slots ที่ไกลเกินไป"""
+        window = []
+        count  = 0
+        for s in self.all_slots:
+            if s < self.current_index:
+                continue
+            if self.states.get(s) == PlaceState.EMPTY and s not in self.skipped_slots:
+                window.append(s)
+                count += 1
+                if count >= 6:
+                    break
+        return window
+
     def _get_newly_detected(self, thresh) -> List[int]:
-        """คืน EMPTY slots ที่พบ object"""
-        return [
-            s for s in self.all_slots
-            if self.states.get(s) == PlaceState.EMPTY
-            and self._has_object_in_slot(thresh, s)
-        ]
+        """คืน slots ใน scan window ที่พบ object — dedup ด้วย set เพื่อป้องกัน slot ซ้ำ"""
+        seen    = set()
+        result  = []
+        for s in self._get_scan_window():
+            if s in seen:
+                continue
+            seen.add(s)
+            if self._has_object_in_slot(thresh, s):
+                result.append(s)
+        return result
 
     # ── state machine ────────────────────────────────────────────────────
     def update_state_machine(self, thresh) -> str:
@@ -299,13 +318,13 @@ class PlaceModeDetectionSystem:
         Returns: "NOT_INITIALIZED" | "RUNNING" | "ALARM"
 
         Logic:
-          - detect >= 2 slots พร้อมกัน → ALARM MULTI_PLACE (หยุดทันที)
+          - scan เฉพาะ 6 slots ถัดจาก current_index
+          - detect >= 2 slots พร้อมกัน → ALARM MULTI_PLACE
           - detect == 1 slot:
               - required_confirmations นับเฉพาะ slot เดิมต่อเนื่อง
                 ถ้า detect เปลี่ยน slot → reset counter นับใหม่
-              - gap == 1  → ปกติ วางถัดกัน
-              - gap == 3  → auto-skip 2 ช่อง → ปกติ
-              - gap อื่น  → ถือว่า skip/ข้ามปกติ ไม่ ALARM ทำงานต่อ
+              - gap == 3 (เว้น 2 ช่อง) → auto-skip ทันทีที่ confirm
+              - gap อื่น → ทำงานต่อปกติ ไม่ ALARM
         """
         if not self.initialized:
             return "NOT_INITIALIZED"
@@ -326,9 +345,8 @@ class PlaceModeDetectionSystem:
                 return "RUNNING"
 
             if not detected:
-                # ไม่มี object → reset counter (ต้องนับใหม่ถ้าวางกลับ)
-                self.place_counter    = 0
-                self.confirming_slot  = None
+                self.place_counter   = 0
+                self.confirming_slot = None
                 return "RUNNING"
 
             slot = detected[0]
@@ -344,11 +362,10 @@ class PlaceModeDetectionSystem:
                 return "RUNNING"
 
             # ── PLACED confirmed ──────────────────────────────────────
-            # ตรวจ gap เพื่อ auto-skip (ไม่ ALARM ไม่ว่า gap จะเป็นเท่าไหร่)
+            # ตรวจ gap → auto-skip ช่องที่ข้าม (ทำก่อน update current_index)
             if self.last_placed > 0:
                 gap = slot - self.last_placed
                 if gap == 3:
-                    # เว้น 2 ช่อง — auto-skip
                     for sk in [self.last_placed + 1, self.last_placed + 2]:
                         if sk not in self.skipped_slots:
                             self.skipped_slots.append(sk)
@@ -356,11 +373,11 @@ class PlaceModeDetectionSystem:
                             if self.lot_logger:
                                 self.lot_logger.info(f"[SKIP] Slot {sk} skipped (gap=3)")
                 elif gap > 1:
-                    # gap อื่น — บันทึก log แต่ไม่ ALARM ทำงานปกติต่อ
-                    logger.info(f"Gap={gap} detected (slot {self.last_placed}→{slot}), continuing")
+                    logger.info(f"Gap={gap} ({self.last_placed}→{slot}), continuing")
                     if self.lot_logger:
                         self.lot_logger.info(f"[GAP] gap={gap} | {self.last_placed}→{slot}")
 
+            # mark PLACED
             self.states[slot]    = PlaceState.PLACED
             self.last_placed     = slot
             self.placed_count   += 1
@@ -373,6 +390,7 @@ class PlaceModeDetectionSystem:
                          and s not in self.skipped_slots]
             if remaining:
                 self.current_index = remaining[0]
+            # current_index อัปเดตแล้ว scan window frame ถัดไปจะถูกต้องทันที
 
             logger.info(f"Slot {slot} PLACED (total={self.placed_count})")
             if self.lot_logger:
